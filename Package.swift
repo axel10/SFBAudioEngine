@@ -97,6 +97,11 @@ let package = Package(
                 .headerSearchPath("Metadata"),
                 .headerSearchPath("Conversion"),
             ],
+            // Xcode's SwiftPM integration has been observed to compile mixed ObjC++ sources
+            // without honoring the package-level C++ standard, so pin it here as well.
+            cxxSettings: [
+                .unsafeFlags(["-std=gnu++20"])
+            ],
             linkerSettings: [
                 .linkedFramework("Accelerate"),
                 .linkedFramework("AudioToolbox"),
