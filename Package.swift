@@ -1,4 +1,4 @@
-// swift-tools-version: 5.6
+// swift-tools-version: 5.7
 //
 // SPDX-FileCopyrightText: 2024 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -11,7 +11,7 @@ import PackageDescription
 let package = Package(
     name: "SFBAudioEngine",
     platforms: [
-        .macOS(.v11),
+        .macOS(.v13),
         .iOS(.v15),
         .tvOS(.v15),
     ],
