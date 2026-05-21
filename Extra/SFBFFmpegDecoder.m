@@ -664,6 +664,10 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
                           _formatContext->streams[_streamIndex]->time_base.num,
                           _formatContext->streams[_streamIndex]->time_base.den) *
                (int64_t)_processingFormat.sampleRate;
+    } else if (_formatContext->duration != AV_NOPTS_VALUE) {
+        return av_rescale(_formatContext->duration,
+                          (int64_t)_processingFormat.sampleRate,
+                          AV_TIME_BASE);
     } else {
         return -1;
     }
