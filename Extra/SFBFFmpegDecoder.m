@@ -125,9 +125,61 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
     NSParameterAssert(formatIsSupported != NULL);
 
     *formatIsSupported = SFBTernaryTruthValueUnknown;
+
+    if (!inputSource.supportsSeeking) {
+        return YES;
+    }
+
+    NSInteger originalOffset;
+    if (![inputSource getOffset:&originalOffset error:error]) {
+        return NO;
+    }
+
+    if (![inputSource seekToOffset:0 error:error]) {
+        return NO;
+    }
+
+    int probeSize = 4096;
+    unsigned char *buf = malloc((size_t)(probeSize + AVPROBE_PADDING_SIZE));
+    if (!buf) {
+        if (error) {
+            *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:ENOMEM userInfo:nil];
+        }
+        return NO;
+    }
+    memset(buf + probeSize, 0, AVPROBE_PADDING_SIZE);
+
+    NSInteger bytesRead = 0;
+    BOOL readSuccess = [inputSource readBytes:buf length:probeSize bytesRead:&bytesRead error:error];
+
+    if (![inputSource seekToOffset:originalOffset error:error]) {
+        free(buf);
+        return NO;
+    }
+
+    if (!readSuccess) {
+        free(buf);
+        return NO;
+    }
+
+    AVProbeData pd;
+    pd.filename = inputSource.url ? inputSource.url.lastPathComponent.UTF8String : NULL;
+    pd.buf = buf;
+    pd.buf_size = (int)bytesRead;
+    pd.mime_type = NULL;
+
+    int score = 0;
+    const AVInputFormat *fmt = av_probe_input_format3(&pd, 1, &score);
+    free(buf);
+
+    if (fmt && score > AVPROBE_SCORE_MAX / 4) {
+        *formatIsSupported = SFBTernaryTruthValueTrue;
+    } else {
+        *formatIsSupported = SFBTernaryTruthValueFalse;
+    }
+
     return YES;
 }
-
 
 + (NSSet *)supportedPathExtensions {
     static NSSet *pathExtensions = nil;
@@ -139,9 +191,17 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
         void *opaque = NULL;
         const AVInputFormat *inputFormat = NULL;
         while ((inputFormat = av_demuxer_iterate(&opaque))) {
+            if (inputFormat->name) {
+                NSString *name = [NSString stringWithUTF8String:inputFormat->name];
+                for (NSString *component in [name componentsSeparatedByString:@","]) {
+                    [inputFormatExtensions addObject:component.lowercaseString];
+                }
+            }
             if (inputFormat->extensions) {
                 NSString *extensions = [NSString stringWithUTF8String:inputFormat->extensions];
-                [inputFormatExtensions addObjectsFromArray:[extensions componentsSeparatedByString:@","]];
+                for (NSString *component in [extensions componentsSeparatedByString:@","]) {
+                    [inputFormatExtensions addObject:component.lowercaseString];
+                }
             }
         }
         pathExtensions = [inputFormatExtensions copy];
@@ -162,7 +222,21 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
         while ((inputFormat = av_demuxer_iterate(&opaque))) {
             if (inputFormat->mime_type) {
                 NSString *types = [NSString stringWithUTF8String:inputFormat->mime_type];
-                [inputFormatMIMETypes addObjectsFromArray:[types componentsSeparatedByString:@","]];
+                for (NSString *component in [types componentsSeparatedByString:@","]) {
+                    [inputFormatMIMETypes addObject:component.lowercaseString];
+                }
+            }
+            if (inputFormat->name) {
+                NSString *name = [NSString stringWithUTF8String:inputFormat->name];
+                if ([name rangeOfString:@"webm" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                    [inputFormatMIMETypes addObject:@"audio/webm"];
+                    [inputFormatMIMETypes addObject:@"video/webm"];
+                    [inputFormatMIMETypes addObject:@"audio/x-webm"];
+                }
+                if ([name rangeOfString:@"matroska" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                    [inputFormatMIMETypes addObject:@"audio/x-matroska"];
+                    [inputFormatMIMETypes addObject:@"video/x-matroska"];
+                }
             }
         }
         mimeTypes = [inputFormatMIMETypes copy];
