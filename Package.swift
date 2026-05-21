@@ -84,6 +84,7 @@ let package = Package(
                 .product(name: "mpg123", package: "mpg123-binary-xcframework"),
                 .product(name: "sndfile", package: "sndfile-binary-xcframework"),
                 .product(name: "tta-cpp", package: "tta-cpp-binary-xcframework"),
+                "FFmpeg",
             ],
             cSettings: [
                 .headerSearchPath("include/SFBAudioEngine"),
@@ -119,7 +120,11 @@ let package = Package(
             name: "SFBAudioEngineTests",
             dependencies: [
                 "SFBAudioEngine",
-            ])
+            ]),
+        .binaryTarget(
+            name: "FFmpeg",
+            path: "macos/Frameworks/FFmpeg.xcframework"
+        )
     ],
     cLanguageStandard: .c11,
     cxxLanguageStandard: .cxx20

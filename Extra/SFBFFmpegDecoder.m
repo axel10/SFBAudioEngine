@@ -7,7 +7,7 @@
 
 #import "SFBFFmpegDecoder.h"
 
-#import "AVAudioPCMBuffer+SFBBufferUtilities.h"
+#import <AVFAudioExtensions/AVFAudioExtensions.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wconversion"
@@ -106,11 +106,28 @@ static int64_t my_seek(void *opaque, int64_t offset, int whence) {
 - (int)decodeFrame;
 @end
 
+SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.Decoder.FFmpeg";
+
 @implementation SFBFFmpegDecoder
 
 + (void)load {
     [SFBAudioDecoder registerSubclass:[self class] priority:-100];
 }
+
++ (SFBAudioDecoderName)decoderName {
+    return SFBAudioDecoderNameFFmpeg;
+}
+
++ (BOOL)testInputSource:(SFBInputSource *)inputSource
+        formatIsSupported:(SFBTernaryTruthValue *)formatIsSupported
+                    error:(NSError **)error {
+    NSParameterAssert(inputSource != nil);
+    NSParameterAssert(formatIsSupported != NULL);
+
+    *formatIsSupported = SFBTernaryTruthValueUnknown;
+    return YES;
+}
+
 
 + (NSSet *)supportedPathExtensions {
     static NSSet *pathExtensions = nil;
