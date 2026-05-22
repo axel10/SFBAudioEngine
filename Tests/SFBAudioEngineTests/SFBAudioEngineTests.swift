@@ -30,4 +30,41 @@ final class SFBAudioEngineTests: XCTestCase {
         XCTAssertEqual(try output.read(&i, length: MemoryLayout<UInt32>.size), MemoryLayout<UInt32>.size)
         XCTAssertEqual(i, 0x12345678)
     }
+
+    func testACDC() throws {
+        let url = URL(fileURLWithPath: "/Volumes/Untitled/music/AcDc - Shoot To Thrill.flac")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            print("ACDC file does not exist, skipping test")
+            return
+        }
+        let decoder = try AudioDecoder(url: url)
+        try decoder.open()
+        XCTAssertEqual(decoder.isOpen, true)
+        print("--- ACDC TEST START ---")
+        print("Decoder format: \(decoder.processingFormat)")
+        print("Total frames: \(decoder.length)")
+        
+        let buffer = AVAudioPCMBuffer(pcmFormat: decoder.processingFormat, frameCapacity: 4096)!
+        var loops = 0
+        while loops < 1000000 {
+            loops += 1
+            do {
+                try decoder.decode(into: buffer, length: 4096)
+            } catch {
+                print("decoder.decode threw error on loop \(loops): \(error)")
+                break
+            }
+            if buffer.frameLength == 0 {
+                print("Reached end of file normally on loop \(loops). Current position: \(decoder.position)")
+                break
+            }
+            // Reset buffer frameLength for next read
+            buffer.frameLength = 0
+        }
+        print("Loops run: \(loops), final position: \(decoder.position)")
+        print("--- ACDC TEST END ---")
+        try decoder.close()
+    }
 }
+
+
