@@ -1611,13 +1611,12 @@ OSStatus sfb::AudioPlayer::render(BOOL &isSilence, const AudioTimeStamp &timesta
     if (const auto framesRead = audioRingBuffer_.read(outputData, frameCount); framesRead > 0) {
 #if DEBUG
         if (framesRead != frameCount) {
-            os_log_debug(log_, "Insufficient audio in ring buffer: %zu frames available, %u requested", framesRead,
-                         frameCount);
+            setFlags(Flags::insufficientAudio);
         }
 #endif /* DEBUG */
         if (!renderingEvents_.writeAll(RenderingEventCommand::framesRendered, nextEventIdentificationNumber(),
                                        timestamp.mHostTime, timestamp.mRateScalar, static_cast<uint32_t>(framesRead))) {
-            os_log_fault(log_, "Error writing frames rendered event");
+            setFlags(Flags::renderingEventWriteFailed);
         }
     } else {
         isSilence = YES;
@@ -1635,6 +1634,18 @@ void sfb::AudioPlayer::sequenceAndProcessEvents(std::stop_token stoken) noexcept
     os_log_debug(log_, "<AudioPlayer: %p> event processing thread starting", this);
 
     while (!stoken.stop_requested()) {
+        const auto flags = loadFlags();
+        if (bits::is_set(flags, Flags::renderingEventWriteFailed)) {
+            clearFlags(Flags::renderingEventWriteFailed);
+            os_log_fault(log_, "Error writing frames rendered event");
+        }
+#if DEBUG
+        if (bits::is_set(flags, Flags::insufficientAudio)) {
+            clearFlags(Flags::insufficientAudio);
+            os_log_debug(log_, "Insufficient audio in ring buffer");
+        }
+#endif /* DEBUG */
+
         DecodingEventCommand decodingEventCommand;
         uint64_t decodingEventIdentificationNumber;
         auto gotDecodingEvent = decodingEvents_.readAll(decodingEventCommand, decodingEventIdentificationNumber);

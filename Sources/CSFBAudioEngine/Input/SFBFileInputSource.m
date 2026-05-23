@@ -11,11 +11,13 @@
 
 #import <stdio.h>
 #import <sys/stat.h>
+#import <fcntl.h>
 
 @interface SFBFileInputSource () {
   @private
     struct stat _filestats;
     FILE *_file;
+    void *_buffer;
 }
 @end
 
@@ -47,6 +49,21 @@
         return NO;
     }
 
+    _buffer = malloc(256 * 1024);
+    if (_buffer) {
+        if (setvbuf(_file, (char *)_buffer, _IOFBF, 256 * 1024) != 0) {
+            os_log_debug(gSFBInputSourceLog, "setvbuf failed");
+        }
+    } else {
+        os_log_debug(gSFBInputSourceLog, "malloc for setvbuf failed");
+    }
+
+    int fd = fileno(_file);
+    struct radvisory advice = { .ra_offset = 0, .ra_count = 256 * 1024 };
+    if (fcntl(fd, F_RDADVISE, &advice) == -1) {
+        os_log_debug(gSFBInputSourceLog, "fcntl F_RDADVISE failed");
+    }
+
     return YES;
 }
 
@@ -54,6 +71,10 @@
     if (_file) {
         int result = fclose(_file);
         _file = NULL;
+        if (_buffer) {
+            free(_buffer);
+            _buffer = NULL;
+        }
         if (result) {
             int err = errno;
             os_log_error(gSFBInputSourceLog, "fclose failed: %{public}s (%d)", strerror(err), err);
