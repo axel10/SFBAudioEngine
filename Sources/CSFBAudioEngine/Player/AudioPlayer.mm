@@ -29,8 +29,6 @@
 
 namespace {
 
-/// The default ring buffer capacity
-constexpr std::size_t ringBufferCapacity = 16384;
 /// The minimum number of frames to write to the ring buffer
 constexpr AVAudioFrameCount ringBufferChunkSize = 2048;
 
@@ -454,6 +452,7 @@ sfb::AudioPlayer::AudioPlayer() {
     }
 
     // Allocate the audio ring buffer moving audio from the decoder queue to the render block
+    const std::size_t ringBufferCapacity = std::max<std::size_t>(16384, static_cast<std::size_t>(format.sampleRate * 1.5));
     if (!audioRingBuffer_.allocate(*(format.streamDescription), ringBufferCapacity)) {
         os_log_error(log_,
                      "Unable to create audio ring buffer: spsc::AudioRingBuffer::allocate failed with format "
@@ -2416,6 +2415,7 @@ bool sfb::AudioPlayer::configureProcessingGraphAndRingBufferForFormat(AVAudioFor
     [engine_ disconnectNodeOutput:sourceNode_];
 
     // Allocate the ring buffer for the new format
+    const std::size_t ringBufferCapacity = std::max<std::size_t>(16384, static_cast<std::size_t>(format.sampleRate * 1.5));
     if (!audioRingBuffer_.allocate(*(format.streamDescription), ringBufferCapacity)) {
         os_log_error(log_,
                      "Unable to create audio ring buffer: spsc::AudioRingBuffer::allocate failed with format "
