@@ -31,6 +31,16 @@ namespace {
 
 /// The minimum number of frames to write to the ring buffer
 constexpr AVAudioFrameCount ringBufferChunkSize = 2048;
+/// The minimum audio to keep buffered to better absorb scheduler jitter during system load
+constexpr double ringBufferDurationSeconds = 3.0;
+/// The minimum ring buffer capacity in frames
+constexpr std::size_t minimumRingBufferCapacity = 32768;
+/// The preferred minimum fill ratio before unmuting playback
+constexpr double preferredRingBufferFillRatio = 0.875;
+/// The shortest time the decoding thread should wait before polling buffer space again
+constexpr int64_t minimumDecodingPollIntervalNanos = NSEC_PER_MSEC;
+/// The maximum time to wait when paused on a format change
+constexpr int64_t formatMismatchPollIntervalNanos = 10 * NSEC_PER_MSEC;
 
 /// The default decoding event ring buffer capacity
 constexpr std::size_t decodingEventRingBufferCapacity = 2048;
@@ -180,6 +190,14 @@ template <typename T>
     requires std::unsigned_integral<T>
 constexpr T absoluteDifference(T a, T b) noexcept {
     return (a >= b) ? (a - b) : (b - a);
+}
+
+std::size_t ringBufferCapacityForSampleRate(double sampleRate) noexcept {
+    return std::max<std::size_t>(minimumRingBufferCapacity, static_cast<std::size_t>(std::ceil(sampleRate * ringBufferDurationSeconds)));
+}
+
+std::size_t preferredRingBufferMaxFreeSpace(std::size_t capacity) noexcept {
+    return std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(capacity * (1.0 - preferredRingBufferFillRatio))));
 }
 
 } /* namespace */
@@ -452,7 +470,7 @@ sfb::AudioPlayer::AudioPlayer() {
     }
 
     // Allocate the audio ring buffer moving audio from the decoder queue to the render block
-    const std::size_t ringBufferCapacity = std::max<std::size_t>(16384, static_cast<std::size_t>(format.sampleRate * 1.5));
+    const std::size_t ringBufferCapacity = ringBufferCapacityForSampleRate(format.sampleRate);
     if (!audioRingBuffer_.allocate(*(format.streamDescription), ringBufferCapacity)) {
         os_log_error(log_,
                      "Unable to create audio ring buffer: spsc::AudioRingBuffer::allocate failed with format "
@@ -1152,7 +1170,7 @@ void sfb::AudioPlayer::logProcessingGraphDescription(os_log_t log, os_log_type_t
 
 void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
     pthread_setname_np("AudioPlayer.Decoding");
-    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 
     os_log_debug(log_, "<AudioPlayer: %p> decoding thread starting", this);
 
@@ -1277,6 +1295,7 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
         // cancellation
         if (ringBufferStale) {
             setFlags(Flags::drainRequired);
+            setFlags(Flags::isMuted);
         }
 
         // Get the earliest decoder state that has not completed decoding
@@ -1490,8 +1509,9 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
                     }
                 }
 
-                // Clear the mute flag if needed now that the ring buffer is full
-                if (bits::is_set(flags, Flags::isMuted)) {
+                // Keep playback muted until the ring buffer is comfortably primed again.
+                if (bits::is_set(flags, Flags::isMuted) &&
+                    audioRingBuffer_.freeSpace() <= preferredRingBufferMaxFreeSpace(audioRingBuffer_.capacity())) {
                     clearFlags(Flags::isMuted);
                 }
             }
@@ -1501,20 +1521,20 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
         if (decoderState == nullptr) {
             if (formatMismatch) {
                 // Shorter timeout if waiting on a decoder to complete rendering for a pending format change
-                deltaNanos = 25 * NSEC_PER_MSEC;
+                deltaNanos = formatMismatchPollIntervalNanos;
             } else {
                 // Idling
                 deltaNanos = NSEC_PER_SEC / 2;
             }
         } else {
             // Determine timeout based on ring buffer free space
-            // Attempt to keep the ring buffer 75% full
-            const auto targetMaxFreeSpace = audioRingBuffer_.capacity() / 4;
+            // Attempt to keep the ring buffer close to full to better tolerate scheduling jitter.
+            const auto targetMaxFreeSpace = preferredRingBufferMaxFreeSpace(audioRingBuffer_.capacity());
             const auto freeSpace = audioRingBuffer_.freeSpace();
 
             if (freeSpace > targetMaxFreeSpace) {
                 // Minimal timeout if the ring buffer has more free space than desired
-                deltaNanos = 2.5 * NSEC_PER_MSEC;
+                deltaNanos = minimumDecodingPollIntervalNanos;
             } else {
                 const auto duration = (targetMaxFreeSpace - freeSpace) / audioRingBuffer_.format().mSampleRate;
                 deltaNanos = duration * NSEC_PER_SEC;
@@ -1522,6 +1542,7 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
         }
 
         // Wait for an event signal; ring buffer space availability is polled using the timeout
+        clearFlags(Flags::decodeWakePending);
         decodingSemaphore_.wait(dispatch_time(DISPATCH_TIME_NOW, deltaNanos));
 
     next_outer_iteration:;
@@ -1629,8 +1650,12 @@ OSStatus sfb::AudioPlayer::render(BOOL &isSilence, const AudioTimeStamp &timesta
         }
 
         // Wake the decoding thread when the ring buffer drops below its preferred fill level.
-        if (framesRead != frameCount || audioRingBuffer_.freeSpace() > audioRingBuffer_.capacity() / 4) {
-            decodingSemaphore_.signal();
+        if (framesRead != frameCount ||
+            audioRingBuffer_.freeSpace() > preferredRingBufferMaxFreeSpace(audioRingBuffer_.capacity())) {
+            if (const auto previousFlags = setFlags(Flags::decodeWakePending);
+                bits::is_clear(previousFlags, Flags::decodeWakePending)) {
+                decodingSemaphore_.signal();
+            }
         }
 
         if (!renderingEvents_.writeAll(RenderingEventCommand::framesRendered, nextEventIdentificationNumber(),
@@ -1640,7 +1665,10 @@ OSStatus sfb::AudioPlayer::render(BOOL &isSilence, const AudioTimeStamp &timesta
     } else {
         zeroOutput();
         isSilence = YES;
-        decodingSemaphore_.signal();
+        if (const auto previousFlags = setFlags(Flags::decodeWakePending);
+            bits::is_clear(previousFlags, Flags::decodeWakePending)) {
+            decodingSemaphore_.signal();
+        }
     }
 
     return noErr;
@@ -2447,7 +2475,7 @@ bool sfb::AudioPlayer::configureProcessingGraphAndRingBufferForFormat(AVAudioFor
     [engine_ disconnectNodeOutput:sourceNode_];
 
     // Allocate the ring buffer for the new format
-    const std::size_t ringBufferCapacity = std::max<std::size_t>(16384, static_cast<std::size_t>(format.sampleRate * 1.5));
+    const std::size_t ringBufferCapacity = ringBufferCapacityForSampleRate(format.sampleRate);
     if (!audioRingBuffer_.allocate(*(format.streamDescription), ringBufferCapacity)) {
         os_log_error(log_,
                      "Unable to create audio ring buffer: spsc::AudioRingBuffer::allocate failed with format "

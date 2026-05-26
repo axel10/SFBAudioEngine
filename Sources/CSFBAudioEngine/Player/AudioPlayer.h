@@ -236,6 +236,8 @@ class AudioPlayer final {
         renderingEventWriteFailed = 1u << 4,
         /// Insufficient audio was read from the ring buffer
         insufficientAudio = 1u << 5,
+        /// A render cycle requested the decoding thread wake up to refill the ring buffer
+        decodeWakePending = 1u << 6,
     };
 
     // Enable bitmask operations for `Flags`
