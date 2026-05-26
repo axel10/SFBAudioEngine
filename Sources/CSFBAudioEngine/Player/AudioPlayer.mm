@@ -1586,40 +1586,61 @@ void sfb::AudioPlayer::submitDecodingErrorEvent(NSError *error) noexcept {
 OSStatus sfb::AudioPlayer::render(BOOL &isSilence, const AudioTimeStamp &timestamp, AVAudioFrameCount frameCount,
                                   AudioBufferList *outputData) noexcept {
     const auto flags = loadFlags();
+    const auto zeroOutput = [&] {
+        for (UInt32 i = 0; i < outputData->mNumberBuffers; ++i) {
+            std::memset(outputData->mBuffers[i].mData, 0, outputData->mBuffers[i].mDataByteSize);
+        }
+    };
 
     // Discard any stale frames in the ring buffer from a seek or decoder cancelation
     if (bits::is_set(flags, Flags::drainRequired)) {
         audioRingBuffer_.drain();
         clearFlags(Flags::drainRequired);
-        for (UInt32 i = 0; i < outputData->mNumberBuffers; ++i) {
-            std::memset(outputData->mBuffers[i].mData, 0, outputData->mBuffers[i].mDataByteSize);
-        }
+        zeroOutput();
         isSilence = YES;
         return noErr;
     }
 
     // Output silence if not playing or muted
     if (!bits::is_set_without(flags, Flags::isPlaying, Flags::isMuted)) {
-        for (UInt32 i = 0; i < outputData->mNumberBuffers; ++i) {
-            std::memset(outputData->mBuffers[i].mData, 0, outputData->mBuffers[i].mDataByteSize);
-        }
+        zeroOutput();
         isSilence = YES;
         return noErr;
     }
 
     // Read audio from the ring buffer
     if (const auto framesRead = audioRingBuffer_.read(outputData, frameCount); framesRead > 0) {
-#if DEBUG
         if (framesRead != frameCount) {
+            // Ensure underruns produce deterministic silence instead of stale buffer contents.
+            for (UInt32 i = 0; i < outputData->mNumberBuffers; ++i) {
+                auto &buffer = outputData->mBuffers[i];
+                const auto bytesPerFrame = frameCount > 0 ? buffer.mDataByteSize / frameCount : 0;
+                const auto bytesRendered = static_cast<size_t>(framesRead) * bytesPerFrame;
+                const auto bytesAvailable = static_cast<size_t>(buffer.mDataByteSize);
+                if (bytesRendered < bytesAvailable) {
+                    std::memset(static_cast<unsigned char *>(buffer.mData) + bytesRendered, 0,
+                                bytesAvailable - bytesRendered);
+                }
+            }
+
+#if DEBUG
             setFlags(Flags::insufficientAudio);
-        }
 #endif /* DEBUG */
+        }
+
+        // Wake the decoding thread when the ring buffer drops below its preferred fill level.
+        if (framesRead != frameCount || audioRingBuffer_.freeSpace() > audioRingBuffer_.capacity() / 4) {
+            decodingSemaphore_.signal();
+        }
+
         if (!renderingEvents_.writeAll(RenderingEventCommand::framesRendered, nextEventIdentificationNumber(),
                                        timestamp.mHostTime, timestamp.mRateScalar, static_cast<uint32_t>(framesRead))) {
             setFlags(Flags::renderingEventWriteFailed);
         }
     } else {
+        zeroOutput();
         isSilence = YES;
+        decodingSemaphore_.signal();
     }
 
     return noErr;
