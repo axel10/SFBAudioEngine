@@ -14,6 +14,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 
 #import <libavcodec/avcodec.h>
+#import <libavcodec/codec_desc.h>
 #import <libavformat/avformat.h>
 #import <libavutil/channel_layout.h>
 #import <libavutil/mathematics.h>
@@ -243,6 +244,16 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
     });
 
     return mimeTypes;
+}
+
+- (BOOL)decodingIsLossless {
+    if (_codecContext) {
+        const AVCodecDescriptor *desc = avcodec_descriptor_get(_codecContext->codec_id);
+        if (desc) {
+            return (desc->props & AV_CODEC_PROP_LOSSLESS) != 0;
+        }
+    }
+    return NO;
 }
 
 - (BOOL)openReturningError:(NSError **)error {
