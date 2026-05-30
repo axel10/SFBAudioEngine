@@ -764,6 +764,8 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
 
     avcodec_flush_buffers(_codecContext);
 
+    _buffer.frameLength = 0;
+
     _framePosition = frame;
 
     return YES;
