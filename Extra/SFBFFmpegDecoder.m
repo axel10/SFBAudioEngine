@@ -102,6 +102,8 @@ static int64_t my_seek(void *opaque, int64_t offset, int whence) {
     int _streamIndex;
     AVAudioFramePosition _framePosition;
     AVAudioPCMBuffer *_buffer;
+    AVAudioFramePosition _seekTargetFrame;
+    BOOL _needsSeekCatchUp;
 }
 - (int)readFrame;
 - (int)decodeFrame;
@@ -635,6 +637,9 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
         return NO;
     }
 
+    _seekTargetFrame = 0;
+    _needsSeekCatchUp = NO;
+
     return YES;
 }
 
@@ -750,7 +755,10 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
     int64_t timestamp = av_rescale(frame,
                                    _formatContext->streams[_streamIndex]->time_base.den,
                                    (int64_t)_processingFormat.sampleRate * _formatContext->streams[_streamIndex]->time_base.num);
-    int result = av_seek_frame(_formatContext, _streamIndex, timestamp, 0);
+    int result = av_seek_frame(_formatContext, _streamIndex, timestamp, AVSEEK_FLAG_BACKWARD);
+    if (result < 0) {
+        result = av_seek_frame(_formatContext, _streamIndex, timestamp, 0);
+    }
     if (result < 0) {
         char errbuf[ERRBUF_SIZE];
         if (0 == av_strerror(result, errbuf, ERRBUF_SIZE)) {
@@ -767,6 +775,8 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
     _buffer.frameLength = 0;
 
     _framePosition = frame;
+    _seekTargetFrame = frame;
+    _needsSeekCatchUp = YES;
 
     return YES;
 }
@@ -832,28 +842,67 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
 
         return result;
     } else {
-        // Copy received audio to _buffer
-        UInt32 bytesPerFrame = _processingFormat.streamDescription->mBytesPerFrame;
-        size_t spaceRemaining = (_buffer.frameCapacity - _buffer.frameLength) * bytesPerFrame;
-        if (spaceRemaining < (UInt32)_frame->linesize[0]) {
-            os_log_error(gSFBAudioDecoderLog, "Insufficient space in buffer for decoded frame: %lu available, need %d",
-                         spaceRemaining, _frame->linesize[0]);
-            return AVERROR(ENOMEM);
+        AVAudioFrameCount decodedFramesCount = (AVAudioFrameCount)_frame->nb_samples;
+        AVAudioFrameCount discardCount = 0;
+        AVAudioFrameCount keepCount = decodedFramesCount;
+
+        if (_needsSeekCatchUp) {
+            int64_t pts = _frame->best_effort_timestamp;
+            if (pts == AV_NOPTS_VALUE) {
+                pts = _frame->pts;
+            }
+            if (pts != AV_NOPTS_VALUE) {
+                AVAudioFramePosition decodedFramePos = av_rescale(pts,
+                                                                 (int64_t)_processingFormat.sampleRate * _formatContext->streams[_streamIndex]->time_base.num,
+                                                                 _formatContext->streams[_streamIndex]->time_base.den);
+                AVAudioFramePosition targetFrame = _seekTargetFrame;
+                if (decodedFramePos + decodedFramesCount <= targetFrame) {
+                    // Entire frame is discarded
+                    av_frame_unref(_frame);
+                    return 0;
+                } else if (decodedFramePos < targetFrame) {
+                    discardCount = (AVAudioFrameCount)(targetFrame - decodedFramePos);
+                    keepCount = decodedFramesCount - discardCount;
+                    _needsSeekCatchUp = NO;
+                } else {
+                    _needsSeekCatchUp = NO;
+                }
+            } else {
+                _needsSeekCatchUp = NO;
+            }
         }
 
+        // Copy received audio to _buffer
+        UInt32 bytesPerFrame = _processingFormat.streamDescription->mBytesPerFrame;
+        
         // Planar formats are not interleaved
         const AudioBufferList *bufferList = _buffer.audioBufferList;
         if (av_sample_fmt_is_planar(_codecContext->sample_fmt)) {
+            UInt32 bytesPerSample = bytesPerFrame; // For planar, bytesPerFrame is bytesPerSample
+            size_t bytesToCopy = (size_t)(keepCount * bytesPerSample);
+            size_t spaceRemaining = (_buffer.frameCapacity - _buffer.frameLength) * bytesPerSample;
+            if (spaceRemaining < bytesToCopy) {
+                os_log_error(gSFBAudioDecoderLog, "Insufficient space in buffer for decoded frame: %lu available, need %lu",
+                             spaceRemaining, bytesToCopy);
+                return AVERROR(ENOMEM);
+            }
             for (UInt32 i = 0; i < bufferList->mNumberBuffers; ++i) {
                 memcpy((unsigned char *)bufferList->mBuffers[i].mData + bufferList->mBuffers[i].mDataByteSize,
-                       _frame->extended_data[i], (size_t)_frame->linesize[0]);
+                       (unsigned char *)_frame->extended_data[i] + discardCount * bytesPerSample, bytesToCopy);
             }
         } else {
+            size_t bytesToCopy = (size_t)(keepCount * bytesPerFrame);
+            size_t spaceRemaining = (_buffer.frameCapacity - _buffer.frameLength) * bytesPerFrame;
+            if (spaceRemaining < bytesToCopy) {
+                os_log_error(gSFBAudioDecoderLog, "Insufficient space in buffer for decoded frame: %lu available, need %lu",
+                             spaceRemaining, bytesToCopy);
+                return AVERROR(ENOMEM);
+            }
             memcpy((unsigned char *)bufferList->mBuffers[0].mData + bufferList->mBuffers[0].mDataByteSize,
-                   _frame->extended_data[0], (size_t)_frame->linesize[0]);
+                   (unsigned char *)_frame->extended_data[0] + discardCount * bytesPerFrame, bytesToCopy);
         }
 
-        _buffer.frameLength += (AVAudioFrameCount)_frame->linesize[0] / bytesPerFrame;
+        _buffer.frameLength += keepCount;
     }
 
     return result;
