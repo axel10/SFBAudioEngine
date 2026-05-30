@@ -736,9 +736,9 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
 - (BOOL)seekToFrame:(AVAudioFramePosition)frame error:(NSError **)error {
     NSParameterAssert(frame >= 0);
 
-    int64_t timestamp = av_rescale(frame / (SInt64)_processingFormat.sampleRate,
+    int64_t timestamp = av_rescale(frame,
                                    _formatContext->streams[_streamIndex]->time_base.den,
-                                   _formatContext->streams[_streamIndex]->time_base.num);
+                                   (int64_t)_processingFormat.sampleRate * _formatContext->streams[_streamIndex]->time_base.num);
     int result = av_seek_frame(_formatContext, _streamIndex, timestamp, 0);
     if (result < 0) {
         char errbuf[ERRBUF_SIZE];
