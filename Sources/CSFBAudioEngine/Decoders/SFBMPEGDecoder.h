@@ -1,3 +1,4 @@
+#if 0
 //
 // SPDX-FileCopyrightText: 2006 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -14,3 +15,4 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+#endif

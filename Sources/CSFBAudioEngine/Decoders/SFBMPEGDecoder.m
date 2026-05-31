@@ -1,3 +1,4 @@
+#if 0
 //
 // SPDX-FileCopyrightText: 2006 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -475,3 +476,4 @@ static BOOL contains_mp3_sync_word_and_minimal_valid_frame_header(const unsigned
 }
 
 @end
+#endif
