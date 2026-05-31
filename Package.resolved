@@ -108,15 +108,7 @@
         "version" : "0.1.2"
       }
     },
-    {
-      "identity" : "mpg123-binary-xcframework",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sbooth/mpg123-binary-xcframework",
-      "state" : {
-        "revision" : "acc2c651cbd8fff8bc8cdeb4faf14b35ba81adee",
-        "version" : "0.3.1"
-      }
-    },
+
     {
       "identity" : "ogg-binary-xcframework",
       "kind" : "remoteSourceControl",
