@@ -326,7 +326,7 @@ static NSMutableArray *_registeredSubclasses = nil;
     Class subclass = nil;
     for (SFBDSDDecoderSubclassInfo *subclassInfo in _registeredSubclasses) {
         SFBDSDDecoderName subclassDecoderName = [subclassInfo.klass decoderName];
-        if (subclassDecoderName == decoderName) {
+        if ([subclassDecoderName isEqualToString:decoderName]) {
             subclass = subclassInfo.klass;
             break;
         }

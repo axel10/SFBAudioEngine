@@ -118,6 +118,9 @@ let package = Package(
             name: "SFBAudioEngineTests",
             dependencies: [
                 "SFBAudioEngine",
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-ObjC"])
             ]),
         .binaryTarget(
             name: "FFmpeg",

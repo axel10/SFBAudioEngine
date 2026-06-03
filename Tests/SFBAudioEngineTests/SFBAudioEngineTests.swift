@@ -65,6 +65,73 @@ final class SFBAudioEngineTests: XCTestCase {
         print("--- ACDC TEST END ---")
         try decoder.close()
     }
+
+    func testMP3() throws {
+        let url = URL(fileURLWithPath: "/Volumes/Untitled/music/All falls down.mp3")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            print("MP3 file does not exist, skipping test")
+            return
+        }
+
+        print("--- RUNTIME CLASS CHECK ---")
+        print("SFBCoreAudioDecoder class: \(String(describing: NSClassFromString("SFBCoreAudioDecoder")))")
+        print("SFBFFmpegDecoder class: \(String(describing: NSClassFromString("SFBFFmpegDecoder")))")
+        print("---------------------------")
+
+        // Test 1: Default Decoder (Core Audio)
+        do {
+            print("--- MP3 TEST START (DEFAULT DECODER) ---")
+            let decoder = try AudioDecoder(url: url)
+            try decoder.open()
+            XCTAssertEqual(decoder.isOpen, true)
+            print("Decoder object: \(decoder)")
+            print("Decoder format: \(decoder.processingFormat)")
+            print("Total frames: \(decoder.length)")
+            
+            let buffer = AVAudioPCMBuffer(pcmFormat: decoder.processingFormat, frameCapacity: 4096)!
+            var loops = 0
+            while loops < 1000000 {
+                loops += 1
+                try decoder.decode(into: buffer, length: 4096)
+                if buffer.frameLength == 0 {
+                    print("Reached end of file normally on loop \(loops). Current position: \(decoder.position)")
+                    break
+                }
+                buffer.frameLength = 0
+            }
+            print("Loops run: \(loops), final position: \(decoder.position)")
+            print("--- MP3 TEST END (DEFAULT DECODER) ---")
+            try decoder.close()
+        }
+
+        // Test 2: FFmpeg Decoder
+        do {
+            print("--- MP3 TEST START (FFMPEG DECODER) ---")
+            let decoderName = AudioDecoder.Name(rawValue: "org.sbooth.AudioEngine.Decoder.FFmpeg")
+            let decoder = try AudioDecoder(url: url, decoderName: decoderName)
+            try decoder.open()
+            XCTAssertEqual(decoder.isOpen, true)
+            print("Decoder object: \(decoder)")
+            print("Decoder format: \(decoder.processingFormat)")
+            print("Total frames: \(decoder.length)")
+            
+            let buffer = AVAudioPCMBuffer(pcmFormat: decoder.processingFormat, frameCapacity: 4096)!
+            var loops = 0
+            while loops < 1000000 {
+                loops += 1
+                try decoder.decode(into: buffer, length: 4096)
+                if buffer.frameLength == 0 {
+                    print("Reached end of file normally on loop \(loops). Current position: \(decoder.position)")
+                    break
+                }
+                buffer.frameLength = 0
+            }
+            print("Loops run: \(loops), final position: \(decoder.position)")
+            print("--- MP3 TEST END (FFMPEG DECODER) ---")
+            try decoder.close()
+        }
+    }
 }
+
 
 

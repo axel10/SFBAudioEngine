@@ -782,24 +782,33 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
 }
 
 - (int)readFrame {
-    AVPacket *packet = av_packet_alloc();
-    if (!packet) {
-        return AVERROR(ENOMEM);
-    }
-
-    int result = av_read_frame(_formatContext, packet);
-
-    if (result == AVERROR_EOF) {
-        // EOF reached?
-    } else if (result < 0) {
-        // Other error encountered
-        char errbuf[ERRBUF_SIZE];
-        if (av_strerror(result, errbuf, ERRBUF_SIZE) == 0) {
-            os_log_error(gSFBAudioDecoderLog, "av_read_frame failed: %{public}s", errbuf);
-        } else {
-            os_log_error(gSFBAudioDecoderLog, "av_read_frame failed: %d", result);
+    for (;;) {
+        AVPacket *packet = av_packet_alloc();
+        if (!packet) {
+            return AVERROR(ENOMEM);
         }
-    } else {
+
+        int result = av_read_frame(_formatContext, packet);
+
+        if (result == AVERROR_EOF) {
+            av_packet_free(&packet);
+            return result;
+        } else if (result < 0) {
+            av_packet_free(&packet);
+            char errbuf[ERRBUF_SIZE];
+            if (av_strerror(result, errbuf, ERRBUF_SIZE) == 0) {
+                os_log_error(gSFBAudioDecoderLog, "av_read_frame failed: %{public}s", errbuf);
+            } else {
+                os_log_error(gSFBAudioDecoderLog, "av_read_frame failed: %d", result);
+            }
+            return result;
+        }
+
+        if (packet->stream_index != _streamIndex) {
+            av_packet_free(&packet);
+            continue;
+        }
+
         // Send the packet with the compressed data to the decoder
         result = avcodec_send_packet(_codecContext, packet);
 
@@ -816,11 +825,10 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
                 os_log_error(gSFBAudioDecoderLog, "avcodec_send_packet failed: %d", result);
             }
         }
+
+        av_packet_free(&packet);
+        return result;
     }
-
-    av_packet_free(&packet);
-
-    return result;
 }
 
 - (int)decodeFrame {
