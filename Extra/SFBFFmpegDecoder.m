@@ -620,7 +620,6 @@ SFBAudioDecoderName const SFBAudioDecoderNameFFmpeg = @"org.sbooth.AudioEngine.D
 
     // TODO: Determine max frame size
     _buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:_processingFormat frameCapacity:4096];
-    _buffer.frameLength = 0;
 
     _frame = av_frame_alloc();
     if (!_frame) {
