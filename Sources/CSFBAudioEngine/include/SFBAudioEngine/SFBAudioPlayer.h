@@ -325,11 +325,6 @@ NS_SWIFT_NAME(AudioPlayer.Delegate)
 /// - parameter audioPlayer: The `SFBAudioPlayer` object processing `decoder`
 /// - parameter decoder: The decoder for which decoding started
 - (void)audioPlayer:(SFBAudioPlayer *)audioPlayer decodingStarted:(id<SFBPCMDecoding>)decoder;
-/// Called to notify the delegate when seeking has completed
-/// - warning: Do not change any properties of `decoder`
-/// - parameter audioPlayer: The `SFBAudioPlayer` object processing `decoder`
-/// - parameter decoder: The decoder for which seeking completed
-- (void)audioPlayer:(SFBAudioPlayer *)audioPlayer seekCompleted:(id<SFBPCMDecoding>)decoder;
 /// Called to notify the delegate after decoding the final frame of audio from a decoder
 /// - warning: Do not change any properties of `decoder`
 /// - parameter audioPlayer: The `SFBAudioPlayer` object processing `decoder`

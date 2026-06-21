@@ -1920,9 +1920,6 @@ bool sfb::AudioPlayer::processDecoderSeekEvent() noexcept {
         if ([delegate respondsToSelector:@selector(audioPlayer:didSeek:toFrame:)]) {
             [delegate audioPlayer:player_ didSeek:decoder toFrame:frame];
         }
-        if ([delegate respondsToSelector:@selector(audioPlayer:seekCompleted:)]) {
-            [delegate audioPlayer:player_ seekCompleted:decoder];
-        }
     }
 
     return true;
