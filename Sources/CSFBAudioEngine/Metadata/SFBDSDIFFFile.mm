@@ -1,3 +1,4 @@
+#if __has_include(<taglib/tag.h>)
 //
 // SPDX-FileCopyrightText: 2006 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -153,3 +154,5 @@ SFBAudioFileFormatName const SFBAudioFileFormatNameDSDIFF = @"org.sbooth.AudioEn
 }
 
 @end
+
+#endif

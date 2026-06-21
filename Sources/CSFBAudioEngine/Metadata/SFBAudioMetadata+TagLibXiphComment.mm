@@ -1,3 +1,4 @@
+#if __has_include(<taglib/tag.h>)
 //
 // SPDX-FileCopyrightText: 2010 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -290,3 +291,5 @@ std::unique_ptr<TagLib::FLAC::Picture> sfb::ConvertAttachedPictureToFLACPicture(
 
     return picture;
 }
+
+#endif

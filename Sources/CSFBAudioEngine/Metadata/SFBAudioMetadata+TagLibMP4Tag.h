@@ -1,3 +1,4 @@
+#if __has_include(<taglib/tag.h>)
 //
 // SPDX-FileCopyrightText: 2010 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -24,3 +25,5 @@ void setMP4TagFromMetadata(SFBAudioMetadata *metadata, TagLib::MP4::Tag *tag, bo
 } /* namespace sfb */
 
 NS_ASSUME_NONNULL_END
+
+#endif

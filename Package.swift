@@ -7,6 +7,84 @@
 //
 
 import PackageDescription
+import Foundation
+
+let packageDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+let configURL = packageDir.appendingPathComponent("sfb_config.json")
+let disableTagLib: Bool
+if let configData = try? Data(contentsOf: configURL),
+   let json = try? JSONSerialization.jsonObject(with: configData) as? [String: Any],
+   let disable = json["disable_taglib"] as? Bool {
+    disableTagLib = disable
+} else {
+    disableTagLib = false
+}
+
+var dependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/sbooth/AVFAudioExtensions", .upToNextMinor(from: "0.5.1")),
+    .package(url: "https://github.com/sbooth/CXXAudioRingBuffer", .upToNextMinor(from: "0.1.1")),
+    .package(url: "https://github.com/sbooth/CXXDispatchSemaphore", .upToNextMinor(from: "0.4.1")),
+    .package(url: "https://github.com/sbooth/CXXRingBuffer", .upToNextMinor(from: "0.6.1")),
+    .package(url: "https://github.com/sbooth/CXXUnfairLock", .upToNextMinor(from: "0.3.1")),
+
+    // Standalone dependencies from source
+    .package(url: "https://github.com/sbooth/CDUMB", from: "2.0.3"),
+    .package(url: "https://github.com/sbooth/CXXMonkeysAudio", from: "12.13.0"),
+
+    // Standalone dependencies not easily packaged using SPM
+    .package(url: "https://github.com/sbooth/wavpack-binary-xcframework", .upToNextMinor(from: "0.2.0")),
+
+    // Xiph ecosystem
+    .package(url: "https://github.com/sbooth/ogg-binary-xcframework", .upToNextMinor(from: "0.1.3")),
+    // flac-binary-xcframework requires ogg-binary-xcframework
+    .package(url: "https://github.com/sbooth/flac-binary-xcframework", .upToNextMinor(from: "0.2.0")),
+    // opus-binary-xcframework requires ogg-binary-xcframework
+    .package(url: "https://github.com/sbooth/opus-binary-xcframework", .upToNextMinor(from: "0.3.0")),
+    // vorbis-binary-xcframework requires ogg-binary-xcframework
+    .package(url: "https://github.com/sbooth/vorbis-binary-xcframework", .upToNextMinor(from: "0.1.2")),
+    // libspeex does not depend on libogg
+    .package(url: "https://github.com/sbooth/CSpeex", from: "1.2.1"),
+
+    // LGPL bits
+    .package(url: "https://github.com/sbooth/lame-binary-xcframework", .upToNextMinor(from: "0.1.2")),
+    // Technically only the musepack *encoder* is LGPL'd but for now the decoder and encoder are packaged together
+    .package(url: "https://github.com/sbooth/mpc-binary-xcframework", .upToNextMinor(from: "0.1.2")),
+    // sndfile-binary-xcframework requires ogg-binary-xcframework, flac-binary-xcframework, opus-binary-xcframework, and vorbis-binary-xcframework
+    .package(url: "https://github.com/sbooth/sndfile-binary-xcframework", .upToNextMinor(from: "0.1.2")),
+    .package(url: "https://github.com/sbooth/tta-cpp-binary-xcframework", .upToNextMinor(from: "0.1.2")),
+]
+
+if !disableTagLib {
+    dependencies.append(.package(url: "https://github.com/sbooth/CXXTagLib", from: "2.3.0"))
+}
+
+var csfbDependencies: [Target.Dependency] = [
+    .product(name: "AVFAudioExtensions", package: "AVFAudioExtensions"),
+    .product(name: "CXXAudioRingBuffer", package: "CXXAudioRingBuffer"),
+    .product(name: "CXXDispatchSemaphore", package: "CXXDispatchSemaphore"),
+    .product(name: "CXXRingBuffer", package: "CXXRingBuffer"),
+    .product(name: "CXXUnfairLock", package: "CXXUnfairLock"),
+    // Standalone dependencies
+    .product(name: "dumb", package: "CDUMB"),
+    .product(name: "MAC", package: "CXXMonkeysAudio"),
+    .product(name: "wavpack", package: "wavpack-binary-xcframework"),
+    // Xiph ecosystem
+    .product(name: "ogg", package: "ogg-binary-xcframework"),
+    .product(name: "FLAC", package: "flac-binary-xcframework"),
+    .product(name: "opus", package: "opus-binary-xcframework"),
+    .product(name: "vorbis", package: "vorbis-binary-xcframework"),
+    .product(name: "speex", package: "CSpeex"),
+    // LGPL bits
+    .product(name: "lame", package: "lame-binary-xcframework"),
+    .product(name: "mpc", package: "mpc-binary-xcframework"),
+    .product(name: "sndfile", package: "sndfile-binary-xcframework"),
+    .product(name: "tta-cpp", package: "tta-cpp-binary-xcframework"),
+    "FFmpeg",
+]
+
+if !disableTagLib {
+    csfbDependencies.append(.product(name: "taglib", package: "CXXTagLib"))
+}
 
 let package = Package(
     name: "SFBAudioEngine",
@@ -23,67 +101,11 @@ let package = Package(
                 "SFBAudioEngine",
             ]),
     ],
-    dependencies: [
-        .package(url: "https://github.com/sbooth/AVFAudioExtensions", .upToNextMinor(from: "0.5.1")),
-        .package(url: "https://github.com/sbooth/CXXAudioRingBuffer", .upToNextMinor(from: "0.1.1")),
-        .package(url: "https://github.com/sbooth/CXXDispatchSemaphore", .upToNextMinor(from: "0.4.1")),
-        .package(url: "https://github.com/sbooth/CXXRingBuffer", .upToNextMinor(from: "0.6.1")),
-        .package(url: "https://github.com/sbooth/CXXUnfairLock", .upToNextMinor(from: "0.3.1")),
-
-        // Standalone dependencies from source
-        .package(url: "https://github.com/sbooth/CDUMB", from: "2.0.3"),
-        .package(url: "https://github.com/sbooth/CXXMonkeysAudio", from: "12.13.0"),
-        .package(url: "https://github.com/sbooth/CXXTagLib", from: "2.3.0"),
-
-        // Standalone dependencies not easily packaged using SPM
-        .package(url: "https://github.com/sbooth/wavpack-binary-xcframework", .upToNextMinor(from: "0.2.0")),
-
-        // Xiph ecosystem
-        .package(url: "https://github.com/sbooth/ogg-binary-xcframework", .upToNextMinor(from: "0.1.3")),
-        // flac-binary-xcframework requires ogg-binary-xcframework
-        .package(url: "https://github.com/sbooth/flac-binary-xcframework", .upToNextMinor(from: "0.2.0")),
-        // opus-binary-xcframework requires ogg-binary-xcframework
-        .package(url: "https://github.com/sbooth/opus-binary-xcframework", .upToNextMinor(from: "0.3.0")),
-        // vorbis-binary-xcframework requires ogg-binary-xcframework
-        .package(url: "https://github.com/sbooth/vorbis-binary-xcframework", .upToNextMinor(from: "0.1.2")),
-        // libspeex does not depend on libogg
-        .package(url: "https://github.com/sbooth/CSpeex", from: "1.2.1"),
-
-        // LGPL bits
-        .package(url: "https://github.com/sbooth/lame-binary-xcframework", .upToNextMinor(from: "0.1.2")),
-        // Technically only the musepack *encoder* is LGPL'd but for now the decoder and encoder are packaged together
-        .package(url: "https://github.com/sbooth/mpc-binary-xcframework", .upToNextMinor(from: "0.1.2")),
-        // sndfile-binary-xcframework requires ogg-binary-xcframework, flac-binary-xcframework, opus-binary-xcframework, and vorbis-binary-xcframework
-        .package(url: "https://github.com/sbooth/sndfile-binary-xcframework", .upToNextMinor(from: "0.1.2")),
-        .package(url: "https://github.com/sbooth/tta-cpp-binary-xcframework", .upToNextMinor(from: "0.1.2")),
-    ],
+    dependencies: dependencies,
     targets: [
         .target(
             name: "CSFBAudioEngine",
-            dependencies: [
-                .product(name: "AVFAudioExtensions", package: "AVFAudioExtensions"),
-                .product(name: "CXXAudioRingBuffer", package: "CXXAudioRingBuffer"),
-                .product(name: "CXXDispatchSemaphore", package: "CXXDispatchSemaphore"),
-                .product(name: "CXXRingBuffer", package: "CXXRingBuffer"),
-                .product(name: "CXXUnfairLock", package: "CXXUnfairLock"),
-                // Standalone dependencies
-                .product(name: "dumb", package: "CDUMB"),
-                .product(name: "MAC", package: "CXXMonkeysAudio"),
-                .product(name: "taglib", package: "CXXTagLib"),
-                .product(name: "wavpack", package: "wavpack-binary-xcframework"),
-                // Xiph ecosystem
-                .product(name: "ogg", package: "ogg-binary-xcframework"),
-                .product(name: "FLAC", package: "flac-binary-xcframework"),
-                .product(name: "opus", package: "opus-binary-xcframework"),
-                .product(name: "vorbis", package: "vorbis-binary-xcframework"),
-                .product(name: "speex", package: "CSpeex"),
-                // LGPL bits
-                .product(name: "lame", package: "lame-binary-xcframework"),
-                .product(name: "mpc", package: "mpc-binary-xcframework"),
-                .product(name: "sndfile", package: "sndfile-binary-xcframework"),
-                .product(name: "tta-cpp", package: "tta-cpp-binary-xcframework"),
-                "FFmpeg",
-            ],
+            dependencies: csfbDependencies,
             cSettings: [
                 .headerSearchPath("include/SFBAudioEngine"),
                 .headerSearchPath("Input"),

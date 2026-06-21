@@ -1,3 +1,4 @@
+#if __has_include(<taglib/tag.h>)
 //
 // SPDX-FileCopyrightText: 2010 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -25,3 +26,5 @@ void sfb::setID3v1TagFromMetadata(SFBAudioMetadata *metadata, TagLib::ID3v1::Tag
     // TagLib::ID3v1::Tag has no additonal functionality over TagLib::Tag
     setTagFromMetadata(metadata, tag);
 }
+
+#endif

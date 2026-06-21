@@ -1,3 +1,4 @@
+#if __has_include(<taglib/tag.h>)
 //
 // SPDX-FileCopyrightText: 2006 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -144,3 +145,5 @@ SFBAudioFileFormatName const SFBAudioFileFormatNameOggFLAC = @"org.sbooth.AudioE
 }
 
 @end
+
+#endif

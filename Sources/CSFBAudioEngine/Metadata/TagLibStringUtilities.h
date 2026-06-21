@@ -1,3 +1,4 @@
+#if __has_include(<taglib/tag.h>)
 //
 // SPDX-FileCopyrightText: 2010 Stephen F. Booth <contact@sbooth.dev>
 // SPDX-License-Identifier: MIT
@@ -21,3 +22,5 @@ inline String StringFromNSString(NSString *_Nullable s) { return s ? String(s.UT
 } /* namespace TagLib */
 
 NS_ASSUME_NONNULL_END
+
+#endif
