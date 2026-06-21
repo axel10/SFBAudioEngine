@@ -1231,6 +1231,15 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
                 }
                 ringBufferStale = true;
 
+                // Submit the seek complete event
+                if (decodingEvents_.writeAll(DecodingEventCommand::seekComplete,
+                                             nextEventIdentificationNumber(),
+                                             decoderState->sequenceNumber_)) {
+                    eventSemaphore_.signal();
+                } else {
+                    os_log_fault(log_, "Error writing seek complete event");
+                }
+
                 if (bits::is_set(flags, DecoderState::Flags::decodingComplete)) {
                     os_log_debug(log_, "Resuming decoding for %{public}@", decoderState->decoder_);
 
@@ -1749,6 +1758,9 @@ bool sfb::AudioPlayer::processDecodingEvent(DecodingEventCommand command) noexce
     case DecodingEventCommand::error:
         return processDecodingErrorEvent();
 
+    case DecodingEventCommand::seekComplete:
+        return processSeekCompleteEvent();
+
     default:
 #if DEBUG
         assert(false && "Unknown DecodingEventCommand");
@@ -1913,6 +1925,35 @@ bool sfb::AudioPlayer::processDecodingErrorEvent() noexcept {
     if (__strong id<SFBAudioPlayerDelegate> delegate = player_.delegate;
         delegate != nil && [delegate respondsToSelector:@selector(audioPlayer:encounteredError:)]) {
         [delegate audioPlayer:player_ encounteredError:error];
+    }
+
+    return true;
+}
+
+bool sfb::AudioPlayer::processSeekCompleteEvent() noexcept {
+    uint64_t sequenceNumber;
+    if (!decodingEvents_.read(sequenceNumber)) {
+        os_log_error(log_, "Missing decoder sequence number for seek complete event");
+        return false;
+    }
+
+    Decoder decoder = nil;
+    {
+        std::lock_guard lock{activeDecodersMutex_};
+
+        if (const auto iter = std::ranges::find(activeDecoders_, sequenceNumber, &DecoderState::sequenceNumber_);
+            iter != activeDecoders_.cend()) {
+            decoder = (*iter)->decoder_;
+        } else {
+            os_log_error(log_, "Decoder state with sequence number %llu missing for seek complete event",
+                         sequenceNumber);
+            return false;
+        }
+    }
+
+    if (__strong id<SFBAudioPlayerDelegate> delegate = player_.delegate;
+        delegate != nil && [delegate respondsToSelector:@selector(audioPlayer:seekCompleted:)]) {
+        [delegate audioPlayer:player_ seekCompleted:decoder];
     }
 
     return true;

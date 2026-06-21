@@ -294,6 +294,8 @@ class AudioPlayer final {
         canceled = 3,
         /// Decoding error
         error = 4,
+        /// Seek completed
+        seekComplete = 5,
     };
 
     /// Render block events
@@ -322,6 +324,9 @@ class AudioPlayer final {
 
     /// Reads and processes a decoding error event from `decodingEvents_`
     bool processDecodingErrorEvent() noexcept;
+
+    /// Reads and processes a seek completed event from `decodingEvents_`
+    bool processSeekCompleteEvent() noexcept;
 
     /// Reads and processes an event payload from `renderingEvents_`
     bool processRenderingEvent(RenderingEventCommand command) noexcept;
