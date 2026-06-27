@@ -265,9 +265,27 @@ NSError *formatNotRecognizedError(NSURL *_Nullable url, OSStatus result) noexcep
         return NO;
     }
 
+    AudioFileTypeID fileTypeHint = 0;
+    NSString *extension = _inputSource.url.pathExtension;
+    if (extension.length > 0) {
+        CFStringRef extString = (__bridge CFStringRef)extension;
+        UInt32 size = 0;
+        auto status = AudioFileGetGlobalInfoSize(kAudioFileGlobalInfo_TypesForExtension, sizeof(CFStringRef), &extString, &size);
+        if (status == noErr && size >= sizeof(AudioFileTypeID)) {
+            AudioFileTypeID *fileTypes = (AudioFileTypeID *)std::malloc(size);
+            if (fileTypes) {
+                status = AudioFileGetGlobalInfo(kAudioFileGlobalInfo_TypesForExtension, sizeof(CFStringRef), &extString, &size, fileTypes);
+                if (status == noErr) {
+                    fileTypeHint = fileTypes[0];
+                }
+                std::free(fileTypes);
+            }
+        }
+    }
+
     // Open the input file
     AudioFileID audioFile;
-    auto result = AudioFileOpenWithCallbacks((__bridge void *)self, readCallback, nullptr, getSizeCallback, nullptr, 0,
+    auto result = AudioFileOpenWithCallbacks((__bridge void *)self, readCallback, nullptr, getSizeCallback, nullptr, fileTypeHint,
                                              &audioFile);
     if (result != noErr) {
         os_log_error(gSFBAudioDecoderLog, "AudioFileOpenWithCallbacks failed: %d '%{public}.4s'", result,
