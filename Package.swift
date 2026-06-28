@@ -96,6 +96,7 @@ let package = Package(
     products: [
         .library(
             name: "SFBAudioEngine",
+            type: .dynamic,
             targets: [
                 "CSFBAudioEngine",
                 "SFBAudioEngine",
