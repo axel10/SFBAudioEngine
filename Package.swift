@@ -136,6 +136,9 @@ let package = Package(
             name: "SFBAudioEngine",
             dependencies: [
                 "CSFBAudioEngine",
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-ObjC"]) // 强制链接器保留所有 Objective-C 类和 Category
             ]),
         .testTarget(
             name: "SFBAudioEngineTests",
