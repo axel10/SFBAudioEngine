@@ -1341,9 +1341,16 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
         }
 
         // Request a drain of the ring buffer during the next render cycle to prevent audible artifacts from seeking or
-        // cancellation
+        // cancellation. If playback is stopped/paused, there may not be a render cycle before newly decoded frames are
+        // written; draining later would discard those fresh frames on the next play.
         if (ringBufferStale) {
-            setFlags(Flags::drainRequired);
+            if (bits::is_set(loadFlags(), Flags::isPlaying)) {
+                setFlags(Flags::drainRequired);
+            } else {
+                os_log_debug(log_, "Draining stale ring buffer immediately while not playing");
+                audioRingBuffer_.drain();
+                clearFlags(Flags::drainRequired);
+            }
             setFlags(Flags::isMuted);
         }
 
@@ -1573,9 +1580,17 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
                     }
                 }
 
-                // Keep playback muted until the ring buffer is comfortably primed again.
+                // Keep playback muted until the ring buffer is comfortably primed again,
+                // or if decoding is complete (meaning we have read all available audio and cannot prime any further).
+                const auto decodingIsComplete = [&]() noexcept {
+                    std::lock_guard lock{activeDecodersMutex_};
+                    return !activeDecoders_.empty() && std::ranges::all_of(activeDecoders_, [](const auto &ds) noexcept {
+                        return bits::is_set(ds->loadFlags(), DecoderState::Flags::decodingComplete);
+                    });
+                }();
+
                 if (bits::is_set(flags, Flags::isMuted) &&
-                    audioRingBuffer_.freeSpace() <= preferredRingBufferMaxFreeSpace(audioRingBuffer_.capacity())) {
+                    (audioRingBuffer_.freeSpace() <= preferredRingBufferMaxFreeSpace(audioRingBuffer_.capacity()) || decodingIsComplete)) {
                     clearFlags(Flags::isMuted);
                 }
             }
