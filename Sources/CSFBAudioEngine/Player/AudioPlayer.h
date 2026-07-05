@@ -25,29 +25,6 @@
 #import <deque>
 #import <memory>
 #import <mutex>
-#define __sfb_str_helper(x) #x
-#define __sfb_str(x) __sfb_str_helper(x)
-
-#pragma message("DEBUG: C++ Standard (__cplusplus) is: " __sfb_str(__cplusplus))
-#ifdef __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__
-#pragma message("DEBUG: macOS deployment target (__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__) is: " __sfb_str(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__))
-#endif
-#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
-#pragma message("DEBUG: iOS deployment target (__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) is: " __sfb_str(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__))
-#endif
-
-#if __has_include(<stop_token>)
-#pragma message("DEBUG: <stop_token> header is available")
-#else
-#pragma message("DEBUG: <stop_token> header is NOT available")
-#endif
-
-#ifdef __cpp_lib_jthread
-#pragma message("DEBUG: __cpp_lib_jthread is defined")
-#else
-#pragma message("DEBUG: __cpp_lib_jthread is NOT defined")
-#endif
-
 #import <stop_token>
 #import <thread>
 #import <vector>
@@ -232,12 +209,8 @@ class AudioPlayer final {
         isMuted = 1u << 2,
         /// The ring buffer needs to be drained during the next render cycle
         drainRequired = 1u << 3,
-        /// Writing rendering events to the event ring buffer failed
-        renderingEventWriteFailed = 1u << 4,
-        /// Insufficient audio was read from the ring buffer
-        insufficientAudio = 1u << 5,
-        /// A render cycle requested the decoding thread wake up to refill the ring buffer
-        decodeWakePending = 1u << 6,
+        /// The render event ring buffer had insufficient space to record an event
+        renderEventDropped = 1u << 4,
     };
 
     // Enable bitmask operations for `Flags`
