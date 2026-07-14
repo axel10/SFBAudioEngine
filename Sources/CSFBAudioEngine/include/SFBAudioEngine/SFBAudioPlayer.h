@@ -181,6 +181,9 @@ NS_SWIFT_NAME(AudioPlayer)
 
 // MARK: - Playback Properties
 
+/// The playback speed (default: 1.0)
+@property(nonatomic) float playbackSpeed;
+
 /// The frame position in the current decoder or `SFBUnknownFramePosition` if unknown or the current decoder is `nil`
 @property(nonatomic, readonly) AVAudioFramePosition framePosition NS_REFINED_FOR_SWIFT;
 /// The frame length of the current decoder or `SFBUnknownFrameLength` if unknown or the current decoder is `nil`

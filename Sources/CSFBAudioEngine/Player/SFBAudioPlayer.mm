@@ -287,6 +287,14 @@ NSErrorDomain const SFBAudioPlayerErrorDomain = @"org.sbooth.AudioEngine.AudioPl
     _player->modifyProcessingGraph(block);
 }
 
+- (float)playbackSpeed {
+    return _player->playbackSpeed();
+}
+
+- (void)setPlaybackSpeed:(float)playbackSpeed {
+    _player->setPlaybackSpeed(playbackSpeed);
+}
+
 - (AVAudioSourceNode *)sourceNode {
     return _player->sourceNode();
 }

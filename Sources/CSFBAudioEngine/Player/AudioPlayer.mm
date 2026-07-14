@@ -13,6 +13,7 @@
 #import "SFBAudioPlayer+Internal.h"
 #import "SFBCStringForOSType.h"
 #import "host_time.hpp"
+#import "WsolaState.hpp"
 
 #import <AVFAudioExtensions/AVFAudioExtensions.h>
 
@@ -262,6 +263,9 @@ struct AudioPlayer::DecoderState final {
     /// Buffer used internally for buffering during conversion
     AVAudioPCMBuffer *decodeBuffer_{nil};
 
+    /// WSOLA state for time stretching
+    std::unique_ptr<WsolaState> wsolaState_{nullptr};
+
     /// The sample rate of the audio converter's output format
     double sampleRate_{0};
 
@@ -480,6 +484,10 @@ inline bool AudioPlayer::DecoderState::performSeek(NSError **error) noexcept {
 
     // Reset the converter to flush any buffers
     [converter_ reset];
+
+    if (wsolaState_) {
+        wsolaState_->reset();
+    }
 
     const auto framePosition = decoder_.framePosition;
     if (framePosition != SFBUnknownFramePosition) {
@@ -1543,11 +1551,66 @@ void sfb::AudioPlayer::processDecoders(std::stop_token stoken) noexcept {
                         }
                     }
 
-                    // Decode audio into the buffer, converting to the rendering format in the process
-                    if (NSError *error = nil; !decoderState->decodeAudio(buffer, &error)) {
-                        decoderState->error_ = error;
-                        decoderState->setFlags(DecoderState::Flags::cancelRequested);
-                        goto next_outer_iteration;
+                    float speed = playbackSpeed();
+                    bool isWsolaActive = (speed != 1.0f) || (decoderState->wsolaState_ != nullptr);
+                    if (isWsolaActive) {
+                        if (decoderState->wsolaState_ == nullptr) {
+                            decoderState->wsolaState_ = std::make_unique<WsolaState>(
+                                buffer.format.channelCount,
+                                buffer.format.sampleRate
+                            );
+                        } else if (decoderState->wsolaState_->channels != buffer.format.channelCount ||
+                                   decoderState->wsolaState_->sample_rate != (uint32_t)buffer.format.sampleRate) {
+                            decoderState->wsolaState_ = std::make_unique<WsolaState>(
+                                buffer.format.channelCount,
+                                buffer.format.sampleRate
+                            );
+                        }
+
+                        // Decode input frames into WSOLA until we have enough or reach EOF
+                        while (decoderState->wsolaState_->frames_needed(speed) > 0) {
+                            if (decoderState->wsolaState_->input_buffer_final_frames > 0) {
+                                break;
+                            }
+
+                            if (NSError *error = nil; !decoderState->decodeAudio(buffer, &error)) {
+                                decoderState->error_ = error;
+                                decoderState->setFlags(DecoderState::Flags::cancelRequested);
+                                goto next_outer_iteration;
+                            }
+
+                            const auto flags = decoderState->loadFlags();
+                            bool atEOF = bits::is_set(flags, DecoderState::Flags::decodingComplete);
+                            if (atEOF) {
+                                decoderState->clearFlags(DecoderState::Flags::decodingComplete);
+                                decoderState->wsolaState_->set_final();
+                            }
+
+                            if (buffer.frameLength == 0) {
+                                break;
+                            }
+
+                            decoderState->wsolaState_->append_input(buffer.floatChannelData, 0, buffer.frameLength);
+                        }
+
+                        // Pull stretched frames from WSOLA
+                        size_t rendered_frames = decoderState->wsolaState_->fill_buffer(buffer.floatChannelData, ringBufferChunkSize, speed);
+                        buffer.frameLength = (AVAudioFrameCount)rendered_frames;
+
+                        if (rendered_frames == 0 && decoderState->wsolaState_->input_buffer_final_frames > 0) {
+                            decoderState->setFlags(DecoderState::Flags::decodingComplete);
+                        }
+                    } else {
+                        // Decode audio into the buffer, converting to the rendering format in the process
+                        if (NSError *error = nil; !decoderState->decodeAudio(buffer, &error)) {
+                            decoderState->error_ = error;
+                            decoderState->setFlags(DecoderState::Flags::cancelRequested);
+                            goto next_outer_iteration;
+                        }
+                    }
+
+                    if (buffer.frameLength == 0) {
+                        break;
                     }
 
                     // Write the decoded audio to the ring buffer for rendering
@@ -1727,7 +1790,8 @@ OSStatus sfb::AudioPlayer::render(BOOL &isSilence, const AudioTimeStamp &timesta
         }
 #endif /* DEBUG */
         if (!renderingEvents_.writeAll(RenderingEventCommand::framesRendered, nextEventIdentificationNumber(),
-                                       timestamp.mHostTime, timestamp.mRateScalar, static_cast<uint32_t>(framesRead))) {
+                                       timestamp.mHostTime, timestamp.mRateScalar, static_cast<uint32_t>(framesRead),
+                                       playbackSpeed())) {
             setFlags(Flags::renderEventDropped);
         }
     } else {
@@ -2029,8 +2093,9 @@ bool sfb::AudioPlayer::processFramesRenderedEvent() noexcept {
     double rateScalar;
     // The number of valid frames rendered
     uint32_t framesRendered;
-    if (!renderingEvents_.readAll(hostTime, rateScalar, framesRendered)) {
-        os_log_error(log_, "Missing timestamp or frames rendered for frames rendered event");
+    float speed;
+    if (!renderingEvents_.readAll(hostTime, rateScalar, framesRendered, speed)) {
+        os_log_error(log_, "Missing timestamp, frames rendered, or speed for frames rendered event");
         return false;
     }
 
@@ -2111,15 +2176,19 @@ bool sfb::AudioPlayer::processFramesRenderedEvent() noexcept {
                 }
             }
 
-            const auto framesFromThisDecoder = std::min(decoderFramesRemaining, framesRemainingToDistribute);
+            const float scale = (speed > 0.0f) ? speed : 1.0f;
+            const auto originalFramesRemainingToDistribute = (AVAudioFramePosition)std::round(framesRemainingToDistribute * scale);
+            const auto originalFramesFromThisDecoder = std::min(decoderFramesRemaining, originalFramesRemainingToDistribute);
 
-            (*iter)->framesRendered_.fetch_add(framesFromThisDecoder, std::memory_order_acq_rel);
-            framesRemainingToDistribute -= framesFromThisDecoder;
+            (*iter)->framesRendered_.fetch_add(originalFramesFromThisDecoder, std::memory_order_acq_rel);
+
+            const auto originalRemaining = originalFramesRemainingToDistribute - originalFramesFromThisDecoder;
+            framesRemainingToDistribute = (AVAudioFramePosition)std::round(originalRemaining / scale);
 
             // Rendering is complete
             if (bits::is_set_and_is_clear(flags, DecoderState::Flags::decodingComplete,
                                           DecoderState::Flags::isCanceled) &&
-                framesFromThisDecoder == decoderFramesRemaining) {
+                originalFramesFromThisDecoder == decoderFramesRemaining) {
                 const auto frameOffset = framesRendered - framesRemainingToDistribute;
                 const auto deltaSeconds = frameOffset / (*iter)->sampleRate();
                 const auto eventTime = hostTime + host_time::fromNanoseconds(static_cast<uint64_t>(

@@ -100,6 +100,9 @@ class AudioPlayer final {
     std::atomic_uint flags_{0};
     static_assert(std::atomic_uint::is_always_lock_free, "Lock-free std::atomic_uint required");
 
+    /// The current playback speed
+    std::atomic<float> playbackSpeed_{1.0f};
+
 #if TARGET_OS_IPHONE
     /// Playback state before audio session interruption
     unsigned int preInterruptState_{0};
@@ -154,6 +157,11 @@ class AudioPlayer final {
     void setNowPlaying(Decoder _Nullable nowPlaying) noexcept;
 
   public:
+    // MARK: - Playback Speed
+
+    float playbackSpeed() const noexcept { return playbackSpeed_.load(std::memory_order_relaxed); }
+    void setPlaybackSpeed(float speed) noexcept { playbackSpeed_.store(speed, std::memory_order_relaxed); }
+
     // MARK: - Playback Properties
 
     SFBPlaybackPosition playbackPosition() const noexcept;
